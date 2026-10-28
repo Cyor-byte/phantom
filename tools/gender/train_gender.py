@@ -49,7 +49,7 @@ def main():
         target_opset={"": target_opset, "ai.onnx.ml": 1}
     )
     print("Creating ONNX model...")
-    with open("gender_model.onnx.dat", "wb") as f:
+    with open("gender_modelV2.onnx.dat", "wb") as f:
         f.write(onx.SerializeToString())
     t4 = datetime.datetime.now()
     print("Done pickling!")

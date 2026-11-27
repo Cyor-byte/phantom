@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>phantom.similarity &#8212; phantom 0.8.3 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../_static/documentation_options.js?v=7f96dc5e"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for phantom.similarity</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""</span>
+<span class="sd">Hashing techniques aplicable to images.</span>
+<span class="sd">"""</span>
+
+<span class="c1"># Read on:</span>
+<span class="c1"># * SIFT, SURF and ORB descriptors</span>
+<span class="c1"># * Perceptual Hashes: aHash, pHash, dHash and wHash</span>
+<span class="c1">#   * http://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.htmlv</span>
+<span class="c1">#   * http://www.hackerfactor.com/blog/index.php?/archives/529-Kind-of-Like-That.html</span>
+<span class="c1">#   * https://fullstackml.com/wavelet-image-hash-in-python-3504fdd282b5</span>
+<span class="c1"># * HoOG</span>
+<span class="c1"># * </span>
+<span class="c1"># </span>
+<span class="c1"># TODO: change the names of a_hash, d_hash, and p_hash for more evident/clear</span>
+<span class="c1">#       names (avg_hash, diff_hash, and dct_hash?)</span>
+<span class="c1"># TODO: check results from https://github.com/alt-text-org/image-algo-testing</span>
+<span class="c1">#       and evaluate extending the hash definitions (maybe class-based + </span>
+<span class="c1">#       __call__ magic?)</span>
+<span class="c1"># TODO: wavelet-hash was commented out a long time ago and never came back,</span>
+<span class="c1">#       check if we can calculate the wavelets without including a new</span>
+<span class="c1">#       dependency</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">scipy.fftpack</span>
+
+
+<div class="viewcode-block" id="compare">
+<a class="viewcode-back" href="../../api/similarity.html#phantom.similarity.compare">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="n">h1</span><span class="p">,</span> <span class="n">h2</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">12</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Compare two hashes (in numpy array form) and return True for equivalence,</span>
+<span class="sd">    False otherwise.</span>
+
+<span class="sd">    :param h1: first hash to compare</span>
+<span class="sd">    :param h2: second hash to compare</span>
+<span class="sd">    :param threshold: similarity threhshold on the Hamming distance</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">h1</span> <span class="o">^</span> <span class="n">h2</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">threshold</span></div>
+
+
+
+<div class="viewcode-block" id="a_hash">
+<a class="viewcode-back" href="../../api/similarity.html#phantom.similarity.a_hash">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">a_hash</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Image similarity hash based on the average colour of an image.</span>
+
+<span class="sd">    Read more on:</span>
+
+<span class="sd">    http://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html</span>
+<span class="sd">    """</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_BGR2GRAY</span><span class="p">)</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_AREA</span><span class="p">)</span>
+    <span class="n">average</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">(</span><span class="n">gray</span><span class="p">)</span>
+    <span class="n">hash_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+    <span class="n">hash_</span><span class="p">[</span><span class="n">gray</span> <span class="o">&gt;</span> <span class="n">average</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">hash_</span></div>
+
+
+
+<div class="viewcode-block" id="d_hash">
+<a class="viewcode-back" href="../../api/similarity.html#phantom.similarity.d_hash">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">d_hash</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Image similarity hash based on horizontal gradients.</span>
+
+<span class="sd">    Read more on:</span>
+
+<span class="sd">    http://www.hackerfactor.com/blog/index.php?/archives/529-Kind-of-Like-That.html</span>
+<span class="sd">    """</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_BGR2GRAY</span><span class="p">)</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="p">(</span><span class="mi">9</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_AREA</span><span class="p">)</span>
+    <span class="n">hash_</span> <span class="o">=</span> <span class="n">gray</span><span class="p">[:,:</span><span class="mi">8</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">gray</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:</span> <span class="mi">9</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">hash_</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="p_hash">
+<a class="viewcode-back" href="../../api/similarity.html#phantom.similarity.p_hash">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">p_hash</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Image similarity hash based on the DCT components of an image.</span>
+
+<span class="sd">    Read more on:</span>
+
+<span class="sd">    http://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html</span>
+<span class="sd">    """</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_BGR2GRAY</span><span class="p">)</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_AREA</span><span class="p">)</span>
+    <span class="c1"># TODO: use cv2.dct() instead -- it's about 10x faster and simpler to call.</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">fftpack</span><span class="o">.</span><span class="n">dct</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">fftpack</span><span class="o">.</span><span class="n">dct</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">average</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">gray</span><span class="p">[:</span><span class="mi">8</span><span class="p">,</span> <span class="p">:</span><span class="mi">8</span><span class="p">])</span>
+    <span class="n">hash_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+    <span class="n">hash_</span><span class="p">[</span><span class="n">gray</span><span class="p">[:</span><span class="mi">8</span><span class="p">,</span> <span class="p">:</span><span class="mi">8</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">average</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">hash_</span></div>
+
+
+
+<span class="c1">#def w_hash(source):</span>
+<span class="c1">#    """</span>
+<span class="c1">#    wHash — wavelet hashing. It works in the frequency domain as pHash but it uses DWT instead of DCT.</span>
+<span class="c1">#    Read more on:</span>
+<span class="c1">#    https://fullstackml.com/wavelet-image-hash-in-python-3504fdd282b5</span>
+<span class="c1">#                                -------------------</span>
+<span class="c1">#                                | cA(LL) | cH(LH) |</span>
+<span class="c1">#    (cA, (cH, cV, cD))  &lt;---&gt;   -------------------</span>
+<span class="c1">#                                | cV(HL) | cD(HH) |</span>
+<span class="c1">#                                -------------------</span>
+<span class="c1">#    LL, low-low coefficients</span>
+<span class="c1">#    """</span>
+<span class="c1">#    gray = cv2.cvtColor(source, cv2.COLOR_BGR2GRAY)</span>
+<span class="c1">#    gray = cv2.resize(gray, (16, 16), interpolation=cv2.INTER_AREA)</span>
+<span class="c1">#    gray = pywt.dwt2(gray, 'haar')[0]   # cA(LL)</span>
+<span class="c1">#    average = np.median(gray)</span>
+<span class="c1">#    hash_ = np.zeros((8, 8), dtype=np.uint8)</span>
+<span class="c1">#    hash_[gray[:8, :8] &gt; average] = 1</span>
+<span class="c1">#</span>
+<span class="c1">#    return hash_</span>
+<span class="c1"># ---&gt; momentarily commented out w_hash to avoid adding the pywt dependency</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">phantom</a></h1>
+
+
+
+<p class="blurb">Forensic image processing in Python</p>
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api/index.html">API reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../changelog.html">Changelog</a></li>
+</ul>
+
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://github.com/bconstanzo/phantom">phantom on GitHub</a></li>
+    
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2018-2026, Bruno Constanzo.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.2.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Lucy-Richardson deconvolution &#8212; phantom 0.8.3 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=7f96dc5e"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="lucy-richardson-deconvolution">
+<span id="lucy-richardson"></span><h1>Lucy-Richardson deconvolution<a class="headerlink" href="#lucy-richardson-deconvolution" title="Link to this heading">¶</a></h1>
+<nav class="contents local" id="on-this-page">
+<p class="topic-title">On this page</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#overview" id="id4">Overview</a></p></li>
+<li><p><a class="reference internal" href="#background" id="id5">Background</a></p>
+<ul>
+<li><p><a class="reference internal" href="#image-formation-model" id="id6">Image formation model</a></p></li>
+<li><p><a class="reference internal" href="#why-lucy-richardson" id="id7">Why Lucy-Richardson?</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#the-algorithm" id="id8">The algorithm</a></p></li>
+<li><p><a class="reference internal" href="#implementation-in-phantom" id="id9">Implementation in <code class="docutils literal notranslate"><span class="pre">phantom</span></code></a></p>
+<ul>
+<li><p><a class="reference internal" href="#number-of-iterations" id="id10">Number of iterations</a></p></li>
+<li><p><a class="reference internal" href="#gaussian-psf" id="id11">Gaussian PSF</a></p></li>
+<li><p><a class="reference internal" href="#convergence-acceleration" id="id12">Convergence acceleration</a></p></li>
+<li><p><a class="reference internal" href="#data-types" id="id13">Data types</a></p></li>
+<li><p><a class="reference internal" href="#example" id="id14">Example</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#choosing-parameters" id="id15">Choosing parameters</a></p></li>
+<li><p><a class="reference internal" href="#limitations" id="id16">Limitations</a></p></li>
+<li><p><a class="reference internal" href="#known-issues" id="id17">Known issues</a></p></li>
+<li><p><a class="reference internal" href="#references" id="id18">References</a></p></li>
+</ul>
+</nav>
+<section id="overview">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Overview</a><a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<p>Real images are never a perfect copy of the scene they capture. Lens
+aberrations, defocus, camera shake and atmospheric turbulence spread the
+light of every point over its neighbors, producing a blurred image.
+<em>Deconvolution</em> is the process of undoing that blur.</p>
+<p><a class="reference internal" href="api/enhance.html#phantom.enhance.lucy_richardson_deconv" title="phantom.enhance.lucy_richardson_deconv"><code class="xref py py-func docutils literal notranslate"><span class="pre">phantom.enhance.lucy_richardson_deconv()</span></code></a> implements the
+<strong>Lucy-Richardson (LR)</strong> algorithm <a class="reference internal" href="#r1972" id="id1"><span>[R1972]</span></a> <a class="reference internal" href="#l1974" id="id2"><span>[L1974]</span></a>, an iterative
+deconvolution method. It assumes that the blur follows a Gaussian point
+spread function (PSF).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">phantom.enhance</span><span class="w"> </span><span class="kn">import</span> <span class="n">lucy_richardson_deconv</span>
+
+<span class="n">img</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">imread</span><span class="p">(</span><span class="s2">"blurry.png"</span><span class="p">)</span>
+<span class="n">sharp</span> <span class="o">=</span> <span class="n">lucy_richardson_deconv</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">num_iterations</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">sigmag</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The current implementation has some known issues, one of which gives
+wrong results for <code class="docutils literal notranslate"><span class="pre">uint8</span></code> and <code class="docutils literal notranslate"><span class="pre">float32</span></code> images. Read
+<a class="reference internal" href="#lr-known-issues"><span class="std std-ref">Known issues</span></a> before using it on evidence.</p>
+</div>
+</section>
+<section id="background">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Background</a><a class="headerlink" href="#background" title="Link to this heading">¶</a></h2>
+<section id="image-formation-model">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">Image formation model</a><a class="headerlink" href="#image-formation-model" title="Link to this heading">¶</a></h3>
+<p>The observed image is modeled as the convolution of the true image with the
+PSF, plus noise:</p>
+<div class="math notranslate nohighlight">
+\[g = f \ast h + n\]</div>
+<p>where:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 85.0%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(g\)</span></p></td>
+<td><p>observed (blurred) image</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(f\)</span></p></td>
+<td><p>true image, the unknown we want to estimate</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(h\)</span></p></td>
+<td><p>point spread function (PSF): the image of an ideal point source</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(n\)</span></p></td>
+<td><p>noise</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(\ast\)</span></p></td>
+<td><p>2D convolution</p></td>
+</tr>
+</tbody>
+</table>
+<p>Deconvolution means estimating <span class="math notranslate nohighlight">\(f\)</span> from <span class="math notranslate nohighlight">\(g\)</span> and <span class="math notranslate nohighlight">\(h\)</span>.</p>
+</section>
+<section id="why-lucy-richardson">
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">Why Lucy-Richardson?</a><a class="headerlink" href="#why-lucy-richardson" title="Link to this heading">¶</a></h3>
+<p>Inverting the convolution directly (inverse filtering) is numerically
+unstable: wherever the PSF has near-zero frequency components, the noise is
+amplified enormously. LR avoids this problem, and it is a popular choice for
+these reasons:</p>
+<ul class="simple">
+<li><p><strong>Iterative, no inversion.</strong> Instead of inverting an operator, each step
+refines the previous estimate, and the process can stop as soon as the
+result is good enough.</p></li>
+<li><p><strong>Non-negativity.</strong> Updates are multiplicative, so if the starting image is
+non-negative the estimate stays non-negative. This matches the physical
+nature of light intensity.</p></li>
+<li><p><strong>Statistical foundation.</strong> Under a Poisson noise model (photon shot
+noise, the dominant noise in many imaging sensors) the iterations converge
+towards the <em>maximum-likelihood</em> estimate of <span class="math notranslate nohighlight">\(f\)</span>.</p></li>
+<li><p><strong>Energy conservation.</strong> With a normalized PSF, the basic algorithm
+preserves the total intensity of the image at every iteration. This
+implementation preserves it only approximately, because of the image
+borders and the acceleration step.</p></li>
+<li><p><strong>Simplicity.</strong> It only needs convolutions and point-wise divisions.</p></li>
+</ul>
+<p>Compared with Wiener filtering, LR does not need an estimate of the noise
+power spectrum, and it respects non-negativity. In exchange, the PSF must be
+known and a stopping criterion must be chosen.</p>
+</section>
+</section>
+<section id="the-algorithm">
+<h2><a class="toc-backref" href="#id8" role="doc-backlink">The algorithm</a><a class="headerlink" href="#the-algorithm" title="Link to this heading">¶</a></h2>
+<p>Starting from the observed image as the initial guess, <span class="math notranslate nohighlight">\(f_0 = g\)</span>, LR
+iterates:</p>
+<div class="math notranslate nohighlight">
+\[f_{k+1} = f_k \cdot \left( \hat{h} \ast \frac{g}{h \ast f_k} \right)\]</div>
+<p>where <span class="math notranslate nohighlight">\(\hat{h}\)</span> is the PSF flipped in both axes. Each iteration:</p>
+<ol class="arabic simple">
+<li><p><strong>Re-blurs</strong> the current estimate: <span class="math notranslate nohighlight">\(h \ast f_k\)</span>.</p></li>
+<li><p><strong>Compares</strong> it to the observation: <span class="math notranslate nohighlight">\(g / (h \ast f_k)\)</span>. A ratio close
+to 1 means that the estimate already explains that region well.</p></li>
+<li><p><strong>Back-projects</strong> the ratio using the flipped PSF.</p></li>
+<li><p><strong>Corrects</strong> the estimate by multiplying it by the result.</p></li>
+</ol>
+</section>
+<section id="implementation-in-phantom">
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">Implementation in <code class="docutils literal notranslate"><span class="pre">phantom</span></code></a><a class="headerlink" href="#implementation-in-phantom" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">lucy_richardson_deconv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">img</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_iterations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigmag</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">clip</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/phantom/enhance.html#lucy_richardson_deconv"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>”
+Lucy-Richardson Deconvolution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>img</strong> – cv2/np.darray imge</p></li>
+<li><p><strong>num_iterations</strong> – number of iterations</p></li>
+<li><p><strong>sigma</strong> – sigma of (Gaussian) point spread function (PSF)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>deconvolution result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<section id="number-of-iterations">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Number of iterations</a><a class="headerlink" href="#number-of-iterations" title="Link to this heading">¶</a></h3>
+<p>The main loop runs <code class="docutils literal notranslate"><span class="pre">num_iterations</span> <span class="pre">-</span> <span class="pre">1</span></code> times, so the function performs one
+update fewer than requested. With <code class="docutils literal notranslate"><span class="pre">num_iterations=1</span></code> it performs no update
+and returns the input unchanged (only clipped, see <a class="reference internal" href="#data-types">Data types</a>).</p>
+</section>
+<section id="gaussian-psf">
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">Gaussian PSF</a><a class="headerlink" href="#gaussian-psf" title="Link to this heading">¶</a></h3>
+<p>The PSF is assumed to be an isotropic Gaussian with standard deviation
+<code class="docutils literal notranslate"><span class="pre">sigmag</span></code> (in pixels). The convolutions use <code class="xref py py-func docutils literal notranslate"><span class="pre">cv2.GaussianBlur()</span></code> with a
+square window of <code class="docutils literal notranslate"><span class="pre">int(8</span> <span class="pre">*</span> <span class="pre">sigmag</span> <span class="pre">+</span> <span class="pre">1)</span></code> pixels, which truncates the Gaussian
+at about <span class="math notranslate nohighlight">\(\pm 4\sigma\)</span>. OpenCV requires that size to be odd, so values
+of <code class="docutils literal notranslate"><span class="pre">sigmag</span></code> that produce an even window (for example <code class="docutils literal notranslate"><span class="pre">0.7</span></code> or <code class="docutils literal notranslate"><span class="pre">2.2</span></code>)
+raise a <code class="docutils literal notranslate"><span class="pre">cv2.error</span></code>. Any multiple of 0.25 (<code class="docutils literal notranslate"><span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">1.5</span></code>, <code class="docutils literal notranslate"><span class="pre">2.25</span></code>,
+<code class="docutils literal notranslate"><span class="pre">3</span></code>…) always produces a valid window.</p>
+<p>Because a Gaussian is symmetric, <span class="math notranslate nohighlight">\(\hat{h} = h\)</span>, so both convolutions of
+the update step use the same blur. Pixels outside the image are filled by
+reflection (OpenCV’s default <code class="docutils literal notranslate"><span class="pre">BORDER_REFLECT_101</span></code>).</p>
+</section>
+<section id="convergence-acceleration">
+<h3><a class="toc-backref" href="#id12" role="doc-backlink">Convergence acceleration</a><a class="headerlink" href="#convergence-acceleration" title="Link to this heading">¶</a></h3>
+<p>Plain LR can need hundreds of iterations. This implementation uses a
+vector-extrapolation acceleration in the style of Biggs and Andrews
+<a class="reference internal" href="#ba1997" id="id3"><span>[BA1997]</span></a>. Before each update the estimate is extrapolated along the
+direction of the previous change:</p>
+<div class="math notranslate nohighlight">
+\[y_k = f_k + \lambda_k \, (f_k - f_{k-1})\]</div>
+<p>with the acceleration factor computed from the last two corrections
+<span class="math notranslate nohighlight">\(d_k = f_k - y_{k-1}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\lambda_k = \frac{\sum d_k \, d_{k-1}}{\sum d_{k-1}^2 + \varepsilon}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\varepsilon = 2.2204 \times 10^{-16}\)</span>. The LR update is then
+applied to <span class="math notranslate nohighlight">\(y_k\)</span> (clamped to be non-negative) instead of <span class="math notranslate nohighlight">\(f_k\)</span>.</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\lambda = 0\)</span> during the first two updates, because there are not yet
+two previous corrections to compare. Those updates follow the standard
+algorithm.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\lambda_k\)</span> is not clamped to any range.</p></li>
+<li><p>For multi-channel (color) images, the sums are computed over the <strong>first
+channel only</strong> (blue, for images loaded with OpenCV) and the resulting
+<span class="math notranslate nohighlight">\(\lambda_k\)</span> is applied to every channel. See <a class="reference internal" href="#lr-known-issues"><span class="std std-ref">Known issues</span></a>.</p></li>
+</ul>
+</section>
+<section id="data-types">
+<h3><a class="toc-backref" href="#id13" role="doc-backlink">Data types</a><a class="headerlink" href="#data-types" title="Link to this heading">¶</a></h3>
+<p>The output is clipped to a range that depends on the input data type and
+returned with that same type:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 50.0%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Input <code class="docutils literal notranslate"><span class="pre">dtype</span></code></p></th>
+<th class="head"><p>Clip minimum</p></th>
+<th class="head"><p>Clip maximum</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">uint8</span></code></p></td>
+<td><p>0</p></td>
+<td><p>255</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">uint16</span></code></p></td>
+<td><p>0</p></td>
+<td><p>65535</p></td>
+</tr>
+<tr class="row-even"><td><p>any other type (meant for floats)</p></td>
+<td><p>0.0</p></td>
+<td><p>1.0</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Floating point images must be in the range <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p>Any other integer type (for example <code class="docutils literal notranslate"><span class="pre">int16</span></code> or <code class="docutils literal notranslate"><span class="pre">int32</span></code>) falls in the
+last row: its values are clipped to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>, which destroys the
+image. Convert it to <code class="docutils literal notranslate"><span class="pre">uint16</span></code> or to a float in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> first.</p></li>
+<li><p>When the input is <code class="docutils literal notranslate"><span class="pre">uint8</span></code> or <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, the result is converted back
+to that type by <strong>truncation</strong>, not rounding, so every pixel can lose up
+to one intensity level.</p></li>
+<li><p>Clipping is always applied: the <code class="docutils literal notranslate"><span class="pre">clip</span></code> argument is currently ignored.</p></li>
+<li><p>In phantom 0.8.3, only <code class="docutils literal notranslate"><span class="pre">float64</span></code> images give correct results. See
+<a class="reference internal" href="#lr-known-issues"><span class="std std-ref">Known issues</span></a>.</p></li>
+</ul>
+</div>
+</section>
+<section id="example">
+<h3><a class="toc-backref" href="#id14" role="doc-backlink">Example</a><a class="headerlink" href="#example" title="Link to this heading">¶</a></h3>
+<p>The following snippet (see <code class="docutils literal notranslate"><span class="pre">examples/enhancements.py</span></code>) blurs an image with a
+Gaussian of <span class="math notranslate nohighlight">\(\sigma = 3\)</span> and then recovers it:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">phantom.enhance</span><span class="w"> </span><span class="kn">import</span> <span class="n">lucy_richardson_deconv</span>
+
+<span class="n">sigma</span> <span class="o">=</span> <span class="mf">3.0</span>
+<span class="n">win_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">8</span> <span class="o">*</span> <span class="n">sigma</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="n">img</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">imread</span><span class="p">(</span><span class="s2">"lena.png"</span><span class="p">)</span>
+<span class="n">blurred</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">GaussianBlur</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="p">(</span><span class="n">win_size</span><span class="p">,</span> <span class="n">win_size</span><span class="p">),</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+
+<span class="n">restored</span> <span class="o">=</span> <span class="n">lucy_richardson_deconv</span><span class="p">(</span><span class="n">blurred</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+
+<span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s2">"blurred"</span><span class="p">,</span> <span class="n">blurred</span><span class="p">)</span>
+<span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s2">"restored"</span><span class="p">,</span> <span class="n">restored</span><span class="p">)</span>
+<span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="choosing-parameters">
+<h2><a class="toc-backref" href="#id15" role="doc-backlink">Choosing parameters</a><a class="headerlink" href="#choosing-parameters" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">sigmag</span></code></dt><dd><p>Should match the real blur of the image. A much smaller value leaves the
+image blurry, and a much larger one produces ringing artifacts. If the
+real blur is unknown, try a few values and keep the one that gives the
+sharpest result without halos. Use multiples of 0.25 to avoid an invalid
+window size (see <a class="reference internal" href="#gaussian-psf">Gaussian PSF</a>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">num_iterations</span></code></dt><dd><p>Start low (10 to 30) and increase it while the image keeps improving. More
+iterations recover more detail, but eventually start amplifying noise.</p>
+</dd>
+</dl>
+</section>
+<section id="limitations">
+<h2><a class="toc-backref" href="#id16" role="doc-backlink">Limitations</a><a class="headerlink" href="#limitations" title="Link to this heading">¶</a></h2>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>LR amplifies noise as the number of iterations grows. If the input is
+noisy, denoise it first or limit the number of iterations.</p>
+</div>
+<ul class="simple">
+<li><p>The PSF must be known or well estimated, and here it is restricted to an
+isotropic Gaussian. Motion blur or non-symmetric PSFs are not supported.</p></li>
+<li><p><strong>Ringing:</strong> halos or double edges may appear around strong contours.</p></li>
+<li><p>Deconvolution recovers detail that was <em>attenuated</em> by the blur, not
+detail that was lost completely.</p></li>
+</ul>
+</section>
+<section id="known-issues">
+<span id="lr-known-issues"></span><h2><a class="toc-backref" href="#id17" role="doc-backlink">Known issues</a><a class="headerlink" href="#known-issues" title="Link to this heading">¶</a></h2>
+<p>These issues of the current implementation (phantom 0.8.3) will be fixed in a
+future version. They are documented here so that results can be reproduced
+and justified.</p>
+<ol class="arabic simple">
+<li><p><strong>Wrong results for uint8 and float32 images.</strong> An internal division
+result is discarded unless the image is <code class="docutils literal notranslate"><span class="pre">float64</span></code>. With <code class="docutils literal notranslate"><span class="pre">float32</span></code>
+images the result fades towards black. With <code class="docutils literal notranslate"><span class="pre">uint8</span></code> images the first
+update is wrong, and later updates only partly correct it (with 10
+iterations, some pixels differ by up to 12 intensity levels from the
+correct result). Until this is fixed, convert the image to <code class="docutils literal notranslate"><span class="pre">float64</span></code>
+in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> first, with <code class="docutils literal notranslate"><span class="pre">img.astype(np.float64)</span> <span class="pre">/</span> <span class="pre">255</span></code>.</p></li>
+<li><p><strong>One update fewer than requested</strong> (see <a class="reference internal" href="#number-of-iterations">Number of iterations</a>).</p></li>
+<li><p><strong>Color images share the acceleration factor of the first channel.</strong>
+Because of this, the result for each channel depends on the channel
+order: a BGR image and its RGB version give slightly different results.
+Grayscale images are not affected. See <a class="reference internal" href="#convergence-acceleration">Convergence acceleration</a>.</p></li>
+<li><p><strong>Some sigmag values raise an error</strong> (see <a class="reference internal" href="#gaussian-psf">Gaussian PSF</a>).</p></li>
+<li><p><strong>Integer types other than uint8 and uint16 are clipped to [0, 1]</strong>, and
+integer results are truncated instead of rounded (see <a class="reference internal" href="#data-types">Data types</a>).</p></li>
+<li><p><strong>The clip argument has no effect</strong>: the output is always clipped.</p></li>
+</ol>
+</section>
+<section id="references">
+<h2><a class="toc-backref" href="#id18" role="doc-backlink">References</a><a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="r1972" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">R1972</a><span class="fn-bracket">]</span></span>
+<p>W. H. Richardson, “Bayesian-Based Iterative Method of Image
+Restoration”, <em>Journal of the Optical Society of America</em>, 62(1),
+55-59, 1972. doi:10.1364/JOSA.62.000055</p>
+</div>
+<div class="citation" id="l1974" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">L1974</a><span class="fn-bracket">]</span></span>
+<p>L. B. Lucy, “An iterative technique for the rectification of
+observed distributions”, <em>The Astronomical Journal</em>, 79, 745-754, 1974.
+doi:10.1086/111605</p>
+</div>
+<div class="citation" id="ba1997" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">BA1997</a><span class="fn-bracket">]</span></span>
+<p>D. S. C. Biggs and M. Andrews, “Acceleration of iterative image
+restoration algorithms”, <em>Applied Optics</em>, 36(8), 1766-1775, 1997.
+doi:10.1364/AO.36.001766</p>
+</div>
+</div>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">phantom</a></h1>
+
+
+
+<p class="blurb">Forensic image processing in Python</p>
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://github.com/bconstanzo/phantom">phantom on GitHub</a></li>
+    
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2018-2026, Bruno Constanzo.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.2.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/lucy_richardson.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

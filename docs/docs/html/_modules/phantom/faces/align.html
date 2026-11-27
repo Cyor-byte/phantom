@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>phantom.faces.align &#8212; phantom 0.8.3 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=7f96dc5e"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for phantom.faces.align</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""</span>
+<span class="sd">Various algorithms to align faces.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+
+<div class="viewcode-block" id="perspective">
+<a class="viewcode-back" href="../../../api/faces.html#phantom.faces.align.perspective">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">perspective</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">dest</span><span class="p">,</span> <span class="n">baselm</span><span class="p">,</span> <span class="n">destlm</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">inter</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_CUBIC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Aligns `dst` with respect to `base`, calculating an homography between them</span>
+<span class="sd">    and using a perspective transformation (cv2.warpPerspective).</span>
+
+<span class="sd">    :param base: base image, taken as reference frame</span>
+<span class="sd">    :param dest: image to be modified</span>
+<span class="sd">    :param baselm: `phantom.faces.Shape` object describing a face in base</span>
+<span class="sd">    :param destlm: `phantom.faces.Shape` object describing a face in dest</span>
+<span class="sd">    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)</span>
+<span class="sd">    :return: `dst`, warped to match the `base` image (according to `baselm` and</span>
+<span class="sd">        `destlm`)</span>
+<span class="sd">    """</span>
+    <span class="n">base_points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">baselm</span><span class="o">.</span><span class="n">points</span><span class="p">)</span>
+    <span class="n">dest_points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">destlm</span><span class="o">.</span><span class="n">points</span><span class="p">)</span>
+    <span class="c1"># now we calculate the homography, and return dst warped</span>
+    <span class="n">h</span><span class="p">,</span> <span class="n">_status</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">findHomography</span><span class="p">(</span><span class="n">dest_points</span><span class="p">,</span> <span class="n">base_points</span><span class="p">)</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">cv2</span><span class="o">.</span><span class="n">warpPerspective</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="n">inter</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="procrustes">
+<a class="viewcode-back" href="../../../api/faces.html#phantom.faces.align.procrustes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">procrustes</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">dest</span><span class="p">,</span> <span class="n">baselm</span><span class="p">,</span> <span class="n">destlm</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">inter</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_CUBIC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Aligns `dst` with respect to `base`, using Ordinary Procrustes Analysis (see</span>
+<span class="sd">    https://matthewearl.github.io/2015/07/28/switching-eds-with-python/).</span>
+
+<span class="sd">    :param base: base image, taken as reference frame</span>
+<span class="sd">    :param dst: image to be modified</span>
+<span class="sd">    :param baselm: `phantom.faces.Shape` object describing a face in base</span>
+<span class="sd">    :param destlm: `phantom.faces.Shape` object describing a face in dest</span>
+<span class="sd">    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)</span>
+<span class="sd">    :return: `dst`, warped to match the `base` image (according to `baselm` and</span>
+<span class="sd">        `destlm`)</span>
+<span class="sd">    """</span>
+    <span class="c1"># prepare the landmark points</span>
+    <span class="n">base_points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">baselm</span><span class="o">.</span><span class="n">points</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">dest_points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">destlm</span><span class="o">.</span><span class="n">points</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="c1"># now we follow Matthews instructions</span>
+    <span class="c1"># this is roughly similar to his transform_from_points function</span>
+    <span class="n">c1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">base_points</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">c2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dest_points</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">base_points</span> <span class="o">-=</span> <span class="n">c1</span>
+    <span class="n">dest_points</span> <span class="o">-=</span> <span class="n">c2</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">base_points</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">dest_points</span><span class="p">)</span>
+    <span class="n">base_points</span> <span class="o">/=</span> <span class="n">s1</span>
+    <span class="n">dest_points</span> <span class="o">/=</span> <span class="n">s2</span>
+    <span class="n">U</span><span class="p">,</span> <span class="n">_S</span><span class="p">,</span> <span class="n">Vt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">base_points</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">dest_points</span><span class="p">,</span> <span class="n">full_matrices</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="p">(</span><span class="n">U</span> <span class="o">*</span> <span class="n">Vt</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">(((</span><span class="n">s2</span> <span class="o">/</span> <span class="n">s1</span><span class="p">)</span> <span class="o">*</span> <span class="n">R</span><span class="p">,</span>
+         <span class="n">c2</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="p">(</span><span class="n">s2</span> <span class="o">/</span> <span class="n">s1</span><span class="p">)</span> <span class="o">*</span> <span class="n">R</span> <span class="o">*</span> <span class="n">c1</span><span class="o">.</span><span class="n">T</span><span class="p">)),</span>
+         <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">])</span>
+         <span class="p">])</span>
+    <span class="c1"># and now from the warp_im function</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">cv2</span><span class="o">.</span><span class="n">warpAffine</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span>
+                   <span class="n">M</span><span class="p">[:</span><span class="mi">2</span><span class="p">],</span>
+                   <span class="n">size</span><span class="p">,</span>
+                   <span class="n">borderMode</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">BORDER_TRANSPARENT</span><span class="p">,</span>
+                   <span class="n">flags</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">WARP_INVERSE_MAP</span> <span class="o">|</span> <span class="n">inter</span><span class="p">)</span></div>
+
+
+
+
+<div class="viewcode-block" id="morph">
+<a class="viewcode-back" href="../../../api/faces.html#phantom.faces.align.morph">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">morph</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">dest</span><span class="p">,</span> <span class="n">baselm</span><span class="p">,</span> <span class="n">destlm</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">inter</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">INTER_CUBIC</span><span class="p">,</span> <span class="n">add_points</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Morphs `dest` to match `base`, according to the facial landmarks passed.</span>
+
+<span class="sd">    :param base: base image, taken as reference frame</span>
+<span class="sd">    :param dest: image to be modified</span>
+<span class="sd">    :param baselm: `phantom.faces.Shape` object describing a face in base</span>
+<span class="sd">    :param destlm: `phantom.faces.Shape` object describing a face in dest</span>
+<span class="sd">    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)</span>
+<span class="sd">    :return: `dst`: morphed to match the `base` image (according to `baselm` and</span>
+<span class="sd">        `destlm`)</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_borders</span><span class="p">(</span><span class="n">img</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Helper function for `morph`.</span>
+
+<span class="sd">        Returns the border points for an image. Used by `morph` to extend the points</span>
+<span class="sd">        before delauney triangulation is applied.</span>
+
+<span class="sd">        :param img: image from which the border points are computed</span>
+<span class="sd">        :return: list of points that make the border of the image</span>
+
+<span class="sd">        Computes 12 points (4 on each side), approximately in this fashion:</span>
+<span class="sd">            X..X..X..X</span>
+<span class="sd">            ..........</span>
+<span class="sd">            X........X</span>
+<span class="sd">            ..........</span>
+<span class="sd">            X........X</span>
+<span class="sd">            ..........</span>
+<span class="sd">            X..X..X..X</span>
+<span class="sd">        """</span>
+        <span class="c1"># TODO: extend the algorithm to accept a "number of points" parameter so it won't be a fixed</span>
+        <span class="c1">#   set of points.</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">img</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">x0</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">x3</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="p">),</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.33</span><span class="p">,</span> <span class="mf">0.67</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="n">y0</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">y2</span><span class="p">,</span> <span class="n">y3</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="p">),</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.33</span><span class="p">,</span> <span class="mf">0.67</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="n">x3</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="n">y3</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y0</span><span class="p">),</span> <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y0</span><span class="p">),</span> <span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">y0</span><span class="p">),</span> <span class="p">(</span><span class="n">x3</span><span class="p">,</span> <span class="n">y0</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y1</span><span class="p">),</span>                     <span class="p">(</span><span class="n">x3</span><span class="p">,</span> <span class="n">y1</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y2</span><span class="p">),</span>                     <span class="p">(</span><span class="n">x3</span><span class="p">,</span> <span class="n">y2</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y3</span><span class="p">),</span> <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y3</span><span class="p">),</span> <span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">y3</span><span class="p">),</span> <span class="p">(</span><span class="n">x3</span><span class="p">,</span> <span class="n">y3</span><span class="p">),</span>
+        <span class="p">]</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_delauney</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">points</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Helper function for `morph`.</span>
+
+<span class="sd">        Performs Delauney Triangulation on a set of points.</span>
+
+<span class="sd">        :param img: np.ndarray/cv2 image to subdivide</span>
+<span class="sd">        :param points: points to subdivide the image</span>
+<span class="sd">        :return: cv2.Subdiv2D object, already subdivided</span>
+<span class="sd">        """</span>
+        <span class="n">rect</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">img</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">img</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">div</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">Subdiv2D</span><span class="p">(</span><span class="n">rect</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span><span class="p">:</span>
+            <span class="n">div</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">div</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_make_tri</span><span class="p">(</span><span class="n">tri</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Helper function for `morph`.</span>
+
+<span class="sd">        Transforms a triangle from cv2.Subdiv2D.getTriangleList() (flat 6 element</span>
+<span class="sd">        array) into a 3-row 2D-point array.</span>
+
+<span class="sd">        :param tri: an element of cv2.Subdiv2D.getTriangleList().</span>
+<span class="sd">        :return: np.float32, 3x2 array.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">([</span>
+            <span class="n">tri</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">],</span>
+            <span class="n">tri</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span>
+            <span class="n">tri</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="mi">6</span><span class="p">],</span>
+        <span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">translate_delauney</span><span class="p">(</span><span class="n">tri</span><span class="p">,</span> <span class="n">points1</span><span class="p">,</span> <span class="n">points2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Helps filter the `base_triangle` for a correct morphing.</span>
+<span class="sd">        """</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">tri</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">points1</span><span class="o">.</span><span class="n">index</span><span class="p">((</span><span class="nb">int</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])))</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">points2</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">_make_tri</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+
+    <span class="c1"># prepare the list of points</span>
+    <span class="n">base_points</span> <span class="o">=</span> <span class="n">baselm</span><span class="o">.</span><span class="n">points</span>
+    <span class="n">dest_points</span> <span class="o">=</span> <span class="n">destlm</span><span class="o">.</span><span class="n">points</span>
+    <span class="k">if</span> <span class="n">add_points</span><span class="p">:</span>
+        <span class="n">base_points</span> <span class="o">+=</span> <span class="n">_borders</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+        <span class="n">dest_points</span> <span class="o">+=</span> <span class="n">_borders</span><span class="p">(</span><span class="n">dest</span><span class="p">)</span>
+    <span class="c1"># delauney triangulation</span>
+    <span class="n">base_div</span> <span class="o">=</span> <span class="n">_delauney</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">base_points</span><span class="p">)</span>
+    <span class="n">dest_div</span> <span class="o">=</span> <span class="n">_delauney</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span> <span class="n">dest_points</span><span class="p">)</span>
+    <span class="n">base_triangles</span> <span class="o">=</span> <span class="n">base_div</span><span class="o">.</span><span class="n">getTriangleList</span><span class="p">()</span>
+    <span class="n">dest_triangles</span> <span class="o">=</span> <span class="n">dest_div</span><span class="o">.</span><span class="n">getTriangleList</span><span class="p">()</span>
+    <span class="c1"># we have to clean the triangles list because cv2.Subdiv2D is a bit aggressive...</span>
+    <span class="c1"># # bmax = max(base.shape)</span>
+    <span class="c1"># # base_triangles = [_make_tri(t) for t in base_triangles if all(0 &lt;= e &lt; bmax for e in t)]</span>
+    <span class="c1"># # dest_triangles = [translate_delauney(t, base_points, dest_points) for t in base_triangles]</span>
+    <span class="n">dmax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dest</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">dest_triangles</span> <span class="o">=</span> <span class="p">[</span><span class="n">_make_tri</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">dest_triangles</span> <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">e</span> <span class="o">&lt;</span> <span class="n">dmax</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">t</span><span class="p">)]</span>
+    <span class="n">base_triangles</span> <span class="o">=</span> <span class="p">[</span><span class="n">translate_delauney</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dest_points</span><span class="p">,</span> <span class="n">base_points</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">dest_triangles</span><span class="p">]</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">s_tri</span><span class="p">,</span> <span class="n">d_tri</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">dest_triangles</span><span class="p">,</span> <span class="n">base_triangles</span><span class="p">):</span>
+        <span class="c1"># heres where morphing begins</span>
+        <span class="c1"># first we calculate the bounding rectangles for each triangle</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">boundingRect</span><span class="p">(</span><span class="n">s_tri</span><span class="p">)</span>
+        <span class="n">s_roi</span> <span class="o">=</span> <span class="n">dest</span><span class="p">[</span><span class="n">y</span><span class="p">:</span> <span class="n">y</span> <span class="o">+</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="n">w</span><span class="p">]</span>
+        <span class="n">s_tri</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">])</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">boundingRect</span><span class="p">(</span><span class="n">d_tri</span><span class="p">)</span>
+        <span class="n">d_roi</span> <span class="o">=</span> <span class="n">ret</span><span class="p">[</span><span class="n">y</span><span class="p">:</span> <span class="n">y</span> <span class="o">+</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="n">w</span><span class="p">]</span>
+        <span class="n">d_tri</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">])</span>
+        <span class="c1"># ...we generate the triangular mask and its inverse</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">h</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">fillConvexPoly</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">d_tri</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+        <span class="n">imask</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.</span> <span class="o">*</span> <span class="p">(</span><span class="n">mask</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># and now we warp and "render" on the target image</span>
+        <span class="n">warp_mat</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">getAffineTransform</span><span class="p">(</span><span class="n">s_tri</span><span class="p">,</span> <span class="n">d_tri</span><span class="p">)</span>
+        <span class="n">render</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">warpAffine</span><span class="p">(</span><span class="n">s_roi</span><span class="p">,</span> <span class="n">warp_mat</span><span class="p">,</span> <span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">),</span> <span class="kc">None</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="n">inter</span> <span class="p">,</span> <span class="n">borderMode</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">BORDER_DEFAULT</span><span class="p">)</span>
+        <span class="n">ret</span><span class="p">[</span><span class="n">y</span><span class="p">:</span> <span class="n">y</span> <span class="o">+</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="n">w</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">render</span> <span class="o">*</span> <span class="n">mask</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">d_roi</span> <span class="o">*</span> <span class="n">imask</span><span class="p">)</span>
+    <span class="c1"># TODO: maybe we could work something on the order of rendering?</span>
+    <span class="k">return</span> <span class="n">ret</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">phantom</a></h1>
+
+
+
+<p class="blurb">Forensic image processing in Python</p>
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">API reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+</ul>
+
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://github.com/bconstanzo/phantom">phantom on GitHub</a></li>
+    
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2018-2026, Bruno Constanzo.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.2.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

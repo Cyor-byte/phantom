@@ -1,0 +1,238 @@
+From fe150292cb0904ae7c96b50a66612ca88cba2e08 Mon Sep 17 00:00:00 2001
+From: Matias Alvarez <alvarezjosematias1@gmail.com>
+Date: Tue, 10 Nov 2026 13:13:35 +0000
+Subject: [PATCH 1/3] docs: fix docstrings so the Sphinx build has no warnings
+
+- Add missing docstrings (estimate_gender_onnx, inferenceSesion,
+  threaded_videocap_read) and document estimate_age_onnx's return value.
+- Fix parameter names that did not match the signature (draw_faces,
+  jpg_ghosts, height_parallel_planes).
+- Fix reST formatting errors in faces.align, measures and utils.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Mz3p7Zh2aCyeTMP13T2zSu
+---
+ phantom/faces/align.py        |  6 +++---
+ phantom/faces/faces.py        | 23 +++++++++++++++++++++--
+ phantom/measures/calibrate.py |  4 ++--
+ phantom/measures/measure.py   |  8 ++++++--
+ phantom/utils.py              | 11 +++++++----
+ phantom/video.py              | 10 +++++++++-
+ 6 files changed, 48 insertions(+), 14 deletions(-)
+
+diff --git a/phantom/faces/align.py b/phantom/faces/align.py
+index afa4c8a..0c1a060 100644
+--- a/phantom/faces/align.py
++++ b/phantom/faces/align.py
+@@ -15,7 +15,7 @@ def perspective(base, dest, baselm, destlm, *, inter=cv2.INTER_CUBIC):
+     :param dest: image to be modified
+     :param baselm: `phantom.faces.Shape` object describing a face in base
+     :param destlm: `phantom.faces.Shape` object describing a face in dest
+-    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)
++    :param inter: interpolation algorithm from cv2 (see the ``cv2.INTER_*`` constants)
+     :return: `dst`, warped to match the `base` image (according to `baselm` and
+         `destlm`)
+     """
+@@ -36,7 +36,7 @@ def procrustes(base, dest, baselm, destlm, *, inter=cv2.INTER_CUBIC):
+     :param dst: image to be modified
+     :param baselm: `phantom.faces.Shape` object describing a face in base
+     :param destlm: `phantom.faces.Shape` object describing a face in dest
+-    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)
++    :param inter: interpolation algorithm from cv2 (see the ``cv2.INTER_*`` constants)
+     :return: `dst`, warped to match the `base` image (according to `baselm` and
+         `destlm`)
+     """
+@@ -78,7 +78,7 @@ def morph(base, dest, baselm, destlm, *, inter=cv2.INTER_CUBIC, add_points=False
+     :param dest: image to be modified
+     :param baselm: `phantom.faces.Shape` object describing a face in base
+     :param destlm: `phantom.faces.Shape` object describing a face in dest
+-    :param inter: interpolation algorithm from cv2 (see cv2.INTER_ constants)
++    :param inter: interpolation algorithm from cv2 (see the ``cv2.INTER_*`` constants)
+     :return: `dst`: morphed to match the `base` image (according to `baselm` and
+         `destlm`)
+     """
+diff --git a/phantom/faces/faces.py b/phantom/faces/faces.py
+index 63df159..cf8e0ae 100644
+--- a/phantom/faces/faces.py
++++ b/phantom/faces/faces.py
+@@ -60,7 +60,13 @@ class _LazyStore:
+         return store
+ 
+ def inferenceSesion(path, providers= ['CPUExecutionProvider']): 
+-    # with open(path, "rb") as filehandle:
++    """
++    Loads an ONNX model with ONNX Runtime.
++
++    :param path: path to the ONNX model file
++    :param providers: ONNX Runtime execution providers (currently unused)
++    :return: tuple of (onnxruntime.InferenceSession, list of input names)
++    """
+     model = rt.InferenceSession(path)
+     input_names = list(input.name for input in model.get_inputs())
+     return (model, input_names)
+@@ -326,7 +332,7 @@ class Atlas:
+         Sets up the Nearest Centroid classifier so predictions can be made
+         of new encodings against the found (or eventually edited) clusters.
+ 
+-        Should always be run after calling `Atlas.group()`.
++        Should always be run after calling `Atlas.fit()`.
+         """  
+         # we'll only NCC the clusters that have well-defined silhuoette metric
+         faces, labels = [list(x) for x in zip(*self.labeled_faces)]
+@@ -498,7 +504,10 @@ def compare(face1, face2):
+ def estimate_age_onnx(face): 
+     """
+     Estimates the age of a person based on a facial encoding using ONNX model.
++
+     :param face: dlibs 128-long face encoding
++    :return: ONNX Runtime output. ``result[0][0]`` is the estimated age
++        group, an index into `phantom.faces.age_tags`
+     """
+     (age_model, input_names) = lazy_vars.get("age_model_onnx")
+     return age_model.run(None, {input_names[0]: [face.astype(np.float32)]})
+@@ -531,5 +540,15 @@ def estimate_gender(face):
+     return gender_model(vector)
+ 
+ def estimate_gender_onnx(face):
++    """
++    Estimates the gender of a person based on a facial encoding using ONNX
++    model.
++
++    :param face: dlibs 128-long face encoding
++    :return: ONNX Runtime output. ``result[0][0][0]`` is the estimated
++        gender as a float, with the same meaning as in `estimate_gender`:
++        close to 1 for females, close to -1 for males, and values near 0
++        when the model is uncertain
++    """
+     (gender_model, input_names) = lazy_vars.get("gender_model_onnx")
+     return gender_model.run(None, {input_names[0]: [face.astype(np.float32)]})
+diff --git a/phantom/measures/calibrate.py b/phantom/measures/calibrate.py
+index 33e265c..766263c 100644
+--- a/phantom/measures/calibrate.py
++++ b/phantom/measures/calibrate.py
+@@ -12,8 +12,8 @@ def find_distortion(img, nx, ny):
+     :param img: Image of a chess board taken by the camera
+     :param nx: number of inside corners in x 
+     :param ny: number of inside corners in y
+-    :return: objpoints[List] of 3D points in real world space and 
+-    imgpoints[List] of 2D points in image plane
++    :return: objpoints (list of 3D points in real world space) and
++        imgpoints (list of 2D points in image plane)
+     """
+     objpoints = [] # 3D points in real world space
+     imgpoints = [] # 2D points in image plane
+diff --git a/phantom/measures/measure.py b/phantom/measures/measure.py
+index 9ca2515..f393e47 100644
+--- a/phantom/measures/measure.py
++++ b/phantom/measures/measure.py
+@@ -46,7 +46,8 @@ def vanishing_points(x1,x2,y1,y2,z1,z2):
+ 
+ def define_plane(x1,x2,y1,y2,z1,z2,height,obj=None):
+     """
+-    Defines the plane in an image, and the scale factor alfa
++    Defines the plane in an image, and the scale factor alfa.
++
+     :param x1: Tuple of two points in a straight line, in the X plane
+     :param x2: Tuple of two points in a straight line, in the X plane
+     :param y1: Tuple of two points in a straight line, in the Y plane
+@@ -78,6 +79,7 @@ def estimate_height(alfa, p, top_point_1, top_point_2, bottom_point, img=[]):
+     example the grownd) as the object used to define the plane. Also, draws the
+     intersection between the vanishing line of the bottom and the top of the
+     object, with the vanishing line of the scene if the image is given.
++
+     :param alfa: Scale factor alfa 
+     :param p: Projection matrix (with 'v' as the third element)
+     :param top_point_1: Point on the top of the object, creating a straight
+@@ -111,6 +113,7 @@ def height_parallel_planes(p, zr, alfa, top_point_1, top_point_2, bottom, img=[]
+     define the projection matrix. Also, draws the intersection between the
+     vanishing line of the bottom and the top of the object, with the vanishing
+     line of the scene if the image is given.
++
+     :param p: Projection matrix
+     :param zr: Distance between the plane used as reference for the projection
+         matrix, and the bottom plane of the other two
+@@ -119,7 +122,7 @@ def height_parallel_planes(p, zr, alfa, top_point_1, top_point_2, bottom, img=[]
+         line with top_point_2
+     :param top_point_2: Point on the top of the object, creating a straight
+         line with top_point_1
+-    :param bottom_point: Point at the base of the object 
++    :param bottom: Point at the base of the object 
+     :param img: [optional] Source image to be drawn on
+     :return: Estimated height of the object
+     """
+@@ -192,6 +195,7 @@ def detect_plane(img, obj, height):
+     Detects and defines the space on an image and a scale factor 'alfa', based
+     on the detection of straight lines using Canny edge detector and Hough line
+     transform, and the height of an object in said image.
++
+     :param img: Image used as reference
+     :param obj: Base and Top points of the reference object defined like 
+         ((xbase, ybase, z), (xtop, ytop, z))
+diff --git a/phantom/utils.py b/phantom/utils.py
+index ea9fd0b..52a206a 100644
+--- a/phantom/utils.py
++++ b/phantom/utils.py
+@@ -22,9 +22,11 @@ def jpg_ghosts(img, qualities=[50, 60, 70, 80, 90, 100]):
+     details.
+ 
+     :param img: cv2/np.ndarray image
+-    :param name: base name to save the different compression level images
+     :param qualities: (optional) list of ints between 0 and 100, for the
+-        different compression levels that will be saved
++        different compression levels to test
++    :return: list of grayscale cv2/np.ndarray images, one for each value in
++        `qualities`, with the difference between `img` and its recompressed
++        version
+     """
+     ret = []
+     imgf = img.astype(np.float32)
+@@ -46,7 +48,7 @@ def jpg_ghosts(img, qualities=[50, 60, 70, 80, 90, 100]):
+ 
+ def color_correct(base, dest, baselm):
+     """
+-    Modifies `dest` colors to approximately match `base`s.
++    Modifies the colors of `dest` to approximately match those of `base`.
+ 
+     :param base: reference image (cv2/np.ndarray)
+     :param dest: image to modify (cv2/np.ndarray)
+@@ -73,7 +75,8 @@ def draw_faces(img, faces, *, color=(0, 255, 0), thick=2, mode="line", on_copy=T
+     Draw a set of faces over img.
+ 
+     :param img: image on which to draw
+-    :param shape: `phantom.faces.Shape` object describing a face in img
++    :param faces: list of `phantom.faces.Shape` objects describing the faces
++        in img
+     :param color: a BGR color tuple, or an iterable of BGR color tuples. It's
+         turned into a cycle before drawing, and iterated upon for each face
+     :param thick: line thicknes or circle radius, depending on mode
+diff --git a/phantom/video.py b/phantom/video.py
+index 2f04dd8..e0fcd64 100644
+--- a/phantom/video.py
++++ b/phantom/video.py
+@@ -18,6 +18,14 @@ from itertools import cycle
+ 
+ 
+ def threaded_videocap_read(cap):
++    """
++    Reads the next frame from an OpenCV capture. Used by `VideoThreaded` to
++    run the read on a worker thread.
++
++    :param cap: cv2.VideoCapture object
++    :return: tuple of (bool status, cv2/np.ndarray frame), as returned by
++        cv2.VideoCapture.read()
++    """
+     return cap.read()
+ 
+ 
+@@ -26,7 +34,7 @@ class VideoThreaded:
+         """
+         Iterable video class, it allows writing code of the form:
+ 
+-            >>> vid = phantom.video.Video(path_to_file)
++            >>> vid = phantom.video.VideoThreaded(path_to_file)
+             >>> for frame in vid:
+             >>>     process(frame)
+         
+-- 
+2.43.0
+

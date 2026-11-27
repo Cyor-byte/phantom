@@ -1,0 +1,36 @@
+From 4c81e181bc3c7e244322303bff9d97b955a7ea1c Mon Sep 17 00:00:00 2001
+From: Matias Alvarez <alvarezjosematias1@gmail.com>
+Date: Tue, 10 Nov 2026 13:13:47 +0000
+Subject: [PATCH 2/3] fix: Atlas.save() failed after Atlas.fit()
+
+fit() stored labeled_faces as a generator, which pickle cannot
+serialize, so saving a fitted Atlas raised TypeError. Store it as a
+list instead.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Mz3p7Zh2aCyeTMP13T2zSu
+---
+ phantom/faces/faces.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/phantom/faces/faces.py b/phantom/faces/faces.py
+index cf8e0ae..7adaf72 100644
+--- a/phantom/faces/faces.py
++++ b/phantom/faces/faces.py
+@@ -320,10 +320,11 @@ class Atlas:
+         faces = [f.encoding for f in self.elements]
+         db = db.fit(faces)
+         s_scores = metrics.silhouette_samples([e.encoding for e in self.elements], db.labels_)
+-        self.labeled_faces = (
++        # a list (not a generator) so the Atlas can still be pickled by .save()
++        self.labeled_faces = [
+             (f, l)
+             for f, l, s in zip(faces, db.labels_, s_scores)
+-            if l >= 0 and s >= 0.20)
++            if l >= 0 and s >= 0.20]
+         if do_grouping:  # not totally convinced about this
+             self.group()
+     
+-- 
+2.43.0
+
